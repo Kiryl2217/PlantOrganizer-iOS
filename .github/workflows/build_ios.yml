@@ -1,0 +1,88 @@
+name: Build iOS Simulator App for Appetize.io
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build-simulator-app:
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 15
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app
+
+      - name: Build Universal iOS Simulator App Bundle
+        run: |
+          SDK_PATH=$(xcrun --sdk iphonesimulator --show-sdk-path)
+          
+          mkdir -p PlantOrganizer.app
+          
+          # Компиляция под ARM64 (Apple Silicon)
+          swiftc -target arm64-apple-ios17.0-simulator -sdk "$SDK_PATH" \
+            Sources/PlantOrganizer/Models/*.swift \
+            Sources/PlantOrganizer/ViewModels/*.swift \
+            Sources/PlantOrganizer/Views/Components/*.swift \
+            Sources/PlantOrganizer/Views/*.swift \
+            Sources/PlantOrganizer/*.swift \
+            -o PlantOrganizer_arm64
+
+          # Компиляция под x86_64 (Intel)
+          swiftc -target x86_64-apple-ios17.0-simulator -sdk "$SDK_PATH" \
+            Sources/PlantOrganizer/Models/*.swift \
+            Sources/PlantOrganizer/ViewModels/*.swift \
+            Sources/PlantOrganizer/Views/Components/*.swift \
+            Sources/PlantOrganizer/Views/*.swift \
+            Sources/PlantOrganizer/*.swift \
+            -o PlantOrganizer_x86
+
+          # Объединение в универсальный исполняемый файл
+          lipo -create PlantOrganizer_arm64 PlantOrganizer_x86 -output PlantOrganizer.app/PlantOrganizer
+          
+          # Генерация Info.plist
+          cat << 'EOF' > PlantOrganizer.app/Info.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>PlantOrganizer</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.student.plantorganizer</string>
+              <key>CFBundleName</key>
+              <string>PlantOrganizer</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleShortVersionString</key>
+              <string>1.0</string>
+              <key>CFBundleVersion</key>
+              <string>1</string>
+              <key>LSRequiresIPhoneOS</key>
+              <true/>
+              <key>UIDeviceFamily</key>
+              <array>
+                  <integer>1</integer>
+                  <integer>2</integer>
+              </array>
+              <key>UILaunchScreen</key>
+              <dict/>
+              <key>UISupportedInterfaceOrientations</key>
+              <array>
+                  <string>UIInterfaceOrientationPortrait</string>
+              </array>
+          </dict>
+          </plist>
+          EOF
+
+          # Упаковка в zip для Appetize.io
+          zip -r PlantOrganizer-Simulator.zip PlantOrganizer.app
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PlantOrganizer-iOS-Simulator
+          path: PlantOrganizer-Simulator.zip
