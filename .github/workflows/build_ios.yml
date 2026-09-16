@@ -20,30 +20,28 @@ jobs:
         run: |
           SDK_PATH=$(xcrun --sdk iphonesimulator --show-sdk-path)
           
+          # Находим все файлы .swift в проекте
+          SWIFT_FILES=$(find Sources/PlantOrganizer -type f -name "*.swift")
+          echo "Found swift files:"
+          echo "$SWIFT_FILES"
+          
+          # Создаем структуру приложения
           mkdir -p PlantOrganizer.app
           
           # Компиляция под ARM64 (Apple Silicon)
           swiftc -target arm64-apple-ios17.0-simulator -sdk "$SDK_PATH" \
-            Sources/PlantOrganizer/Models/*.swift \
-            Sources/PlantOrganizer/ViewModels/*.swift \
-            Sources/PlantOrganizer/Views/Components/*.swift \
-            Sources/PlantOrganizer/Views/*.swift \
-            Sources/PlantOrganizer/*.swift \
+            $SWIFT_FILES \
             -o PlantOrganizer_arm64
 
           # Компиляция под x86_64 (Intel)
           swiftc -target x86_64-apple-ios17.0-simulator -sdk "$SDK_PATH" \
-            Sources/PlantOrganizer/Models/*.swift \
-            Sources/PlantOrganizer/ViewModels/*.swift \
-            Sources/PlantOrganizer/Views/Components/*.swift \
-            Sources/PlantOrganizer/Views/*.swift \
-            Sources/PlantOrganizer/*.swift \
+            $SWIFT_FILES \
             -o PlantOrganizer_x86
 
           # Объединение в универсальный исполняемый файл
           lipo -create PlantOrganizer_arm64 PlantOrganizer_x86 -output PlantOrganizer.app/PlantOrganizer
           
-          # Генерация Info.plist
+          # Создание конфигурационного файла Info.plist
           cat << 'EOF' > PlantOrganizer.app/Info.plist
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -78,7 +76,7 @@ jobs:
           </plist>
           EOF
 
-          # Упаковка в zip для Appetize.io
+          # Упаковка в zip-архив для Appetize.io
           zip -r PlantOrganizer-Simulator.zip PlantOrganizer.app
 
       - name: Upload Artifact
