@@ -20,28 +20,24 @@ jobs:
         run: |
           SDK_PATH=$(xcrun --sdk iphonesimulator --show-sdk-path)
           
-          # Находим все файлы .swift в проекте
-          SWIFT_FILES=$(find Sources/PlantOrganizer -type f -name "*.swift")
-          echo "Found swift files:"
-          echo "$SWIFT_FILES"
-          
-          # Создаем структуру приложения
           mkdir -p PlantOrganizer.app
           
-          # Компиляция под ARM64 (Apple Silicon)
+          SWIFT_FILES=$(find Sources/PlantOrganizer -type f -name "*.swift")
+          
+          # Компиляция ARM64 (Apple Silicon)
           swiftc -target arm64-apple-ios17.0-simulator -sdk "$SDK_PATH" \
             $SWIFT_FILES \
             -o PlantOrganizer_arm64
 
-          # Компиляция под x86_64 (Intel)
+          # Компиляция x86_64 (Intel)
           swiftc -target x86_64-apple-ios17.0-simulator -sdk "$SDK_PATH" \
             $SWIFT_FILES \
             -o PlantOrganizer_x86
 
-          # Объединение в универсальный исполняемый файл
+          # Объединение в универсальный бинарник
           lipo -create PlantOrganizer_arm64 PlantOrganizer_x86 -output PlantOrganizer.app/PlantOrganizer
           
-          # Создание конфигурационного файла Info.plist
+          # Полный Info.plist для симулятора
           cat << 'EOF' > PlantOrganizer.app/Info.plist
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -59,6 +55,14 @@ jobs:
               <string>1.0</string>
               <key>CFBundleVersion</key>
               <string>1</string>
+              <key>MinimumOSVersion</key>
+              <string>17.0</string>
+              <key>CFBundleSupportedPlatforms</key>
+              <array>
+                  <string>iPhoneSimulator</string>
+              </array>
+              <key>DTPlatformName</key>
+              <string>iphonesimulator</string>
               <key>LSRequiresIPhoneOS</key>
               <true/>
               <key>UIDeviceFamily</key>
@@ -76,11 +80,11 @@ jobs:
           </plist>
           EOF
 
-          # Упаковка в zip-архив для Appetize.io
-          zip -r PlantOrganizer-Simulator.zip PlantOrganizer.app
+          # Обязательная цифровая подпись для симулятора iOS
+          codesign --force --deep --sign - PlantOrganizer.app
 
-      - name: Upload Artifact
+      - name: Upload Simulator App
         uses: actions/upload-artifact@v4
         with:
-          name: PlantOrganizer-iOS-Simulator
-          path: PlantOrganizer-Simulator.zip
+          name: PlantOrganizer-Appetize
+          path: PlantOrganizer.app
