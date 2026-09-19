@@ -8,6 +8,8 @@ public struct Plant: Identifiable, Codable {
     public var nextWateringDate: Date
     public var wateringIntervalDays: Int
     public var iconSymbol: String
+    public var botanicalInfo: BotanicalInfo
+    public var careLogs: [CareLogEntry]
     
     public init(
         id: UUID = UUID(),
@@ -16,7 +18,9 @@ public struct Plant: Identifiable, Codable {
         room: String,
         nextWateringDate: Date,
         wateringIntervalDays: Int,
-        iconSymbol: String
+        iconSymbol: String,
+        botanicalInfo: BotanicalInfo,
+        careLogs: [CareLogEntry] = []
     ) {
         self.id = id
         self.name = name
@@ -25,6 +29,8 @@ public struct Plant: Identifiable, Codable {
         self.nextWateringDate = nextWateringDate
         self.wateringIntervalDays = wateringIntervalDays
         self.iconSymbol = iconSymbol
+        self.botanicalInfo = botanicalInfo
+        self.careLogs = careLogs
     }
     
     public var isWateringOverdue: Bool {
