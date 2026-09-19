@@ -78,9 +78,7 @@ public struct MainPlantListView: View {
                 viewModel.updateFilteredPlants()
             }
             .navigationDestination(for: UUID.self) { plantId in
-                if let selectedPlant = viewModel.plants.first(where: { $0.id == plantId }) {
-                    PlantDetailStubView(plant: selectedPlant)
-                }
+                PlantDetailStubView(viewModel: viewModel, plantId: plantId)
             }
         }
     }
