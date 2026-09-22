@@ -2,6 +2,8 @@ import SwiftUI
 
 public struct MainPlantListView: View {
     @State private var viewModel = PlantListViewModel()
+    @State private var showingScannerSheet = false
+    @State private var showingReferenceSheet = false
     
     public init() {}
     
@@ -76,6 +78,30 @@ public struct MainPlantListView: View {
             .searchable(text: $viewModel.searchText, prompt: "Поиск растения или комнаты...")
             .onChange(of: viewModel.searchText) { _, _ in
                 viewModel.updateFilteredPlants()
+            }
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        showingReferenceSheet = true
+                    } label: {
+                        Image(systemName: "book.pages.fill")
+                    }
+                }
+                
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showingScannerSheet = true
+                    } label: {
+                        Image(systemName: "camera.viewfinder")
+                            .fontWeight(.bold)
+                    }
+                }
+            }
+            .sheet(isPresented: $showingScannerSheet) {
+                CameraScanSheetView(viewModel: viewModel)
+            }
+            .sheet(isPresented: $showingReferenceSheet) {
+                ReferenceCatalogView()
             }
             .navigationDestination(for: UUID.self) { plantId in
                 PlantDetailStubView(viewModel: viewModel, plantId: plantId)
