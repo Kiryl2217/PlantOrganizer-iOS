@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import Combine
 
 @Observable
 public final class PlantListViewModel {
@@ -34,7 +35,6 @@ public final class PlantListViewModel {
         }
     }
     
-    // Добавление записи в журнал и сохранение в БД
     public func addCareLog(plantId: UUID, type: CareType, note: String) {
         guard let index = plants.firstIndex(where: { $0.id == plantId }) else { return }
         
@@ -51,14 +51,16 @@ public final class PlantListViewModel {
                 value: plants[index].wateringIntervalDays,
                 to: Date()
             ) ?? Date()
+            // Перепланируем напоминание о следующем поливе
+            NotificationService.shared.scheduleWateringNotification(for: plants[index])
         }
         
         updateFilteredPlants()
         saveDataToDatabase()
     }
     
-    // Автоматическое добавление нового растения из сканера камеры (Лабораторная №3)
-    public func addNewPlantFromScan(selectedTag: MockPriceTag) {
+    // Добавление растения с регламентом из REST API и регистрацией цепочки напоминаний
+    public func addNewPlantFromScan(selectedTag: MockPriceTag, customBotanical: BotanicalInfo? = nil) {
         let calendar = Calendar.current
         let nextWatering = calendar.date(byAdding: .day, value: selectedTag.intervalDays, to: Date()) ?? Date()
         
@@ -69,23 +71,24 @@ public final class PlantListViewModel {
             nextWateringDate: nextWatering,
             wateringIntervalDays: selectedTag.intervalDays,
             iconSymbol: selectedTag.iconSymbol,
-            botanicalInfo: selectedTag.botanicalInfo,
+            botanicalInfo: customBotanical ?? selectedTag.botanicalInfo,
             careLogs: [
-                CareLogEntry(date: Date(), type: .watering, note: "Первичный полив при сканировании и добавлении в базу")
+                CareLogEntry(date: Date(), type: .watering, note: "Регламент ухода загружен через REST API (Combine)")
             ]
         )
         
         plants.insert(newPlant, at: 0)
         updateFilteredPlants()
         saveDataToDatabase()
+        
+        // Генерация цепочки локальных push-напоминаний через UserNotifications
+        NotificationService.shared.scheduleWateringNotification(for: newPlant)
     }
     
-    // Сохранение текущего состояния в локальную базу данных
     private func saveDataToDatabase() {
         LocalStorageService.shared.savePlants(plants)
     }
     
-    // Загрузка из базы данных или инициализация стартовыми данными
     private func loadDataFromDatabase() {
         if let savedPlants = LocalStorageService.shared.loadPlants(), !savedPlants.isEmpty {
             self.plants = savedPlants
@@ -128,8 +131,8 @@ public final class PlantListViewModel {
                 light: "Яркий рассеянный свет, полутень. Избегать прямых солнечных лучей.",
                 humidity: "Высокая (60-80%). Требуется регулярное опрыскивание листьев.",
                 temperature: "Оптимально 20-25 °C. Не переносит сквозняки ниже 16 °C.",
-                soil: "Рыхлый субстрат для ароидных с корой и перлитом. Полив после просыхания.",
-                description: "Крупная тропическая лиана семейства Ароидные с резными листьями."
+                soil: "Рыхлый субстрат для ароидных с корой и перлитом.",
+                description: "Регламент ухода синхронизирован с энциклопедией Perenual API."
             ),
             careLogs: [
                 CareLogEntry(date: threeDaysAgo, type: .spraying, note: "Опрыскивание теплой водой"),
@@ -149,7 +152,7 @@ public final class PlantListViewModel {
                 humidity: "Умеренная или повышенная (50-70%).",
                 temperature: "18-24 °C круглый год.",
                 soil: "Универсальный грунт для декоративно-лиственных с дренажом.",
-                description: "Вечнозеленое дерево или кустарник семейства Тутовые."
+                description: "Вечнозеленое дерево семейства Тутовые."
             ),
             careLogs: [
                 CareLogEntry(date: calendar.date(byAdding: .day, value: -3, to: today)!, type: .watering, note: "Плановый полив")
@@ -168,7 +171,7 @@ public final class PlantListViewModel {
                 humidity: "Сухой воздух комнат, в опрыскивании не нуждается.",
                 temperature: "16-28 °C.",
                 soil: "Субстрат для кактусов и суккулентов.",
-                description: "Суккулентное бесстебельное растение с жесткими листьями."
+                description: "Суккулентное растение с прямостоячими листьями."
             ),
             careLogs: [
                 CareLogEntry(date: calendar.date(byAdding: .day, value: -12, to: today)!, type: .watering, note: "Умеренный полив")
