@@ -10,7 +10,7 @@ public final class PlantListViewModel {
     public var filteredPlants: [Plant] = []
     
     public init() {
-        loadMockData()
+        loadDataFromDatabase()
     }
     
     public func updateFilteredPlants() {
@@ -34,7 +34,7 @@ public final class PlantListViewModel {
         }
     }
     
-    // Добавление новой записи в журнал ухода и обновление даты следующего полива
+    // Добавление записи в журнал и сохранение в БД
     public func addCareLog(plantId: UUID, type: CareType, note: String) {
         guard let index = plants.firstIndex(where: { $0.id == plantId }) else { return }
         
@@ -45,7 +45,6 @@ public final class PlantListViewModel {
         )
         plants[index].careLogs.insert(newEntry, at: 0)
         
-        // Если полили — сбрасываем дату просрочки на новый интервал
         if type == .watering {
             plants[index].nextWateringDate = Calendar.current.date(
                 byAdding: .day,
@@ -53,7 +52,61 @@ public final class PlantListViewModel {
                 to: Date()
             ) ?? Date()
         }
+        
         updateFilteredPlants()
+        saveDataToDatabase()
+    }
+    
+    // Автоматическое добавление нового растения из сканера камеры (Лабораторная №3)
+    public func addNewPlantFromScan(selectedTag: MockPriceTag) {
+        let calendar = Calendar.current
+        let nextWatering = calendar.date(byAdding: .day, value: selectedTag.intervalDays, to: Date()) ?? Date()
+        
+        let newPlant = Plant(
+            name: selectedTag.parsedPlantName,
+            scientificName: selectedTag.parsedScientificName,
+            room: selectedTag.room,
+            nextWateringDate: nextWatering,
+            wateringIntervalDays: selectedTag.intervalDays,
+            iconSymbol: selectedTag.iconSymbol,
+            botanicalInfo: selectedTag.botanicalInfo,
+            careLogs: [
+                CareLogEntry(date: Date(), type: .watering, note: "Первичный полив при сканировании и добавлении в базу")
+            ]
+        )
+        
+        plants.insert(newPlant, at: 0)
+        updateFilteredPlants()
+        saveDataToDatabase()
+    }
+    
+    // Сохранение текущего состояния в локальную базу данных
+    private func saveDataToDatabase() {
+        LocalStorageService.shared.savePlants(plants)
+    }
+    
+    // Загрузка из базы данных или инициализация стартовыми данными
+    private func loadDataFromDatabase() {
+        if let savedPlants = LocalStorageService.shared.loadPlants(), !savedPlants.isEmpty {
+            self.plants = savedPlants
+            self.filteredPlants = savedPlants
+            generateTasksFromPlants()
+        } else {
+            loadMockData()
+            saveDataToDatabase()
+        }
+    }
+    
+    private func generateTasksFromPlants() {
+        careTasks = plants.map { plant in
+            CareTask(
+                plantId: plant.id,
+                plantName: plant.name,
+                type: .watering,
+                dueDate: plant.nextWateringDate,
+                isCompleted: false
+            )
+        }
     }
     
     private func loadMockData() {
@@ -64,7 +117,6 @@ public final class PlantListViewModel {
         let inTwoDays = calendar.date(byAdding: .day, value: 2, to: today)!
         let inFiveDays = calendar.date(byAdding: .day, value: 5, to: today)!
         
-        // 1. Монстера
         let p1 = Plant(
             name: "Монстера Деликатесная",
             scientificName: "Monstera Deliciosa",
@@ -76,8 +128,8 @@ public final class PlantListViewModel {
                 light: "Яркий рассеянный свет, полутень. Избегать прямых солнечных лучей.",
                 humidity: "Высокая (60-80%). Требуется регулярное опрыскивание листьев.",
                 temperature: "Оптимально 20-25 °C. Не переносит сквозняки ниже 16 °C.",
-                soil: "Рыхлый субстрат для ароидных с корой и перлитом. Полив после просыхания верхнего слоя.",
-                description: "Крупная тропическая лиана семейства Ароидные с характерными перфорированными листьями."
+                soil: "Рыхлый субстрат для ароидных с корой и перлитом. Полив после просыхания.",
+                description: "Крупная тропическая лиана семейства Ароидные с резными листьями."
             ),
             careLogs: [
                 CareLogEntry(date: threeDaysAgo, type: .spraying, note: "Опрыскивание теплой водой"),
@@ -85,7 +137,6 @@ public final class PlantListViewModel {
             ]
         )
         
-        // 2. Фикус
         let p2 = Plant(
             name: "Фикус Бенджамина",
             scientificName: "Ficus Benjamina",
@@ -94,19 +145,17 @@ public final class PlantListViewModel {
             wateringIntervalDays: 3,
             iconSymbol: "tree.fill",
             botanicalInfo: BotanicalInfo(
-                light: "Хорошее освещение без прямых лучей. Пестролистным формам нужно больше света.",
+                light: "Хорошее освещение без прямых лучей.",
                 humidity: "Умеренная или повышенная (50-70%).",
-                temperature: "18-24 °C круглый год. Резкий перепад температур вызывает сброс листьев.",
+                temperature: "18-24 °C круглый год.",
                 soil: "Универсальный грунт для декоративно-лиственных с дренажом.",
-                description: "Вечнозеленое дерево или кустарник семейства Тутовые с тонкими ветвями и мелкими глянцевыми листьями."
+                description: "Вечнозеленое дерево или кустарник семейства Тутовые."
             ),
             careLogs: [
-                CareLogEntry(date: calendar.date(byAdding: .day, value: -3, to: today)!, type: .watering, note: "Плановый полив"),
-                CareLogEntry(date: calendar.date(byAdding: .day, value: -10, to: today)!, type: .fertilizing, note: "Подкормка азотным удобрением")
+                CareLogEntry(date: calendar.date(byAdding: .day, value: -3, to: today)!, type: .watering, note: "Плановый полив")
             ]
         )
         
-        // 3. Сансевиерия
         let p3 = Plant(
             name: "Сансевиерия",
             scientificName: "Sansevieria Trifasciata",
@@ -115,14 +164,14 @@ public final class PlantListViewModel {
             wateringIntervalDays: 14,
             iconSymbol: "camera.macro",
             botanicalInfo: BotanicalInfo(
-                light: "Неприхотлива: от яркого солнца до глубокой тени.",
+                light: "Неприхотлива: от яркого солнца до тени.",
                 humidity: "Сухой воздух комнат, в опрыскивании не нуждается.",
-                temperature: "16-28 °C. Выдерживает кратковременное понижение до 10 °C.",
-                soil: "Субстрат для кактусов и суккулентов с большим количеством песка.",
-                description: "Суккулентное бесстебельное растение с жесткими мечевидными прямостоячими листьями."
+                temperature: "16-28 °C.",
+                soil: "Субстрат для кактусов и суккулентов.",
+                description: "Суккулентное бесстебельное растение с жесткими листьями."
             ),
             careLogs: [
-                CareLogEntry(date: calendar.date(byAdding: .day, value: -12, to: today)!, type: .watering, note: "Умеренный полив под корень")
+                CareLogEntry(date: calendar.date(byAdding: .day, value: -12, to: today)!, type: .watering, note: "Умеренный полив")
             ]
         )
         
