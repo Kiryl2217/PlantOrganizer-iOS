@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 public struct CameraScanSheetView: View {
     @Bindable public var viewModel: PlantListViewModel
@@ -9,6 +10,11 @@ public struct CameraScanSheetView: View {
     @State private var recognizedName: String = ""
     @State private var recognizedScientific: String = ""
     @State private var scanSuccess: Bool = false
+    @State private var isFetchingAPI: Bool = false
+    @State private var apiSuccessMessage: String = ""
+    @State private var fetchedBotanicalInfo: BotanicalInfo? = nil
+    
+    @State private var cancellables = Set<AnyCancellable>()
     
     public init(viewModel: PlantListViewModel) {
         self.viewModel = viewModel
@@ -22,14 +28,14 @@ public struct CameraScanSheetView: View {
                     ZStack {
                         RoundedRectangle(cornerRadius: 20)
                             .fill(Color.black.opacity(0.85))
-                            .frame(height: 200)
+                            .frame(height: 190)
                         
-                        VStack(spacing: 12) {
+                        VStack(spacing: 10) {
                             Image(systemName: "viewfinder")
-                                .font(.system(size: 54))
+                                .font(.system(size: 48))
                                 .foregroundStyle(isScanning ? Color.yellow : (scanSuccess ? Color.green : Color.white))
                             
-                            Text(isScanning ? "Распознавание текста (OCR)..." : (scanSuccess ? "✓ Текст этикетки успешно распознан!" : "Наведите камеру на ценник или бирку цветка"))
+                            Text(isScanning ? "Оптическое распознавание (OCR)..." : (scanSuccess ? "✓ Наименование успешно распознано!" : "Наведите камеру на ценник или бирку цветка"))
                                 .font(.footnote)
                                 .fontWeight(.semibold)
                                 .foregroundStyle(Color.white)
@@ -39,7 +45,7 @@ public struct CameraScanSheetView: View {
                     }
                     .padding(.horizontal)
                     
-                    // 2. Выбор тестового ценника (Mock камеры для симулятора)
+                    // 2. Выбор тестового образца ценника
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Тестовые этикетки из магазина:")
                             .font(.subheadline)
@@ -64,22 +70,20 @@ public struct CameraScanSheetView: View {
                             .padding(10)
                             .background(selectedTag.id == tag.id ? Color.green.opacity(0.12) : Color(.secondarySystemBackground))
                             .clipShape(RoundedRectangle(cornerRadius: 10))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 10)
-                                    .stroke(selectedTag.id == tag.id ? Color.green : Color.clear, lineWidth: 1.5)
-                            )
-                            .padding(.horizontal)
                             .onTapGesture {
                                 selectedTag = tag
                                 scanSuccess = false
+                                fetchedBotanicalInfo = nil
+                                apiSuccessMessage = ""
                             }
+                            .padding(.horizontal)
                         }
                     }
                     
                     // 3. Кнопка сканирования
                     Button {
                         isScanning = true
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                             recognizedName = selectedTag.parsedPlantName
                             recognizedScientific = selectedTag.parsedScientificName
                             isScanning = false
@@ -88,7 +92,7 @@ public struct CameraScanSheetView: View {
                     } label: {
                         HStack {
                             Image(systemName: "camera.fill")
-                            Text("Сканировать ценник")
+                            Text("Сканировать наименование")
                         }
                         .font(.headline)
                         .foregroundStyle(Color.white)
@@ -100,43 +104,64 @@ public struct CameraScanSheetView: View {
                     .padding(.horizontal)
                     .disabled(isScanning)
                     
-                    // 4. Карточка распознанного растения и добавление в БД
+                    // 4. Блок REST API + Combine + UserNotifications (Лабораторная №4)
                     if scanSuccess {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Распознано с камеры:")
+                        VStack(alignment: .leading, spacing: 14) {
+                            Text("Распознано: \(recognizedName)")
                                 .font(.headline)
                             
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(recognizedName)
-                                    .font(.title3)
-                                    .fontWeight(.bold)
-                                Text(recognizedScientific)
-                                    .font(.subheadline)
-                                    .italic()
-                                    .foregroundStyle(Color.secondary)
-                                
-                                Divider()
-                                
-                                Text("Комната: \(selectedTag.room)")
-                                    .font(.caption)
-                                Text("Интервал полива: раз в \(selectedTag.intervalDays) дн.")
-                                    .font(.caption)
-                            }
-                            .padding()
-                            .background(Color(.secondarySystemBackground))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                            
+                            // Кнопка асинхронного REST API запроса через Combine
                             Button {
-                                viewModel.addNewPlantFromScan(selectedTag: selectedTag)
+                                fetchCareRegulationViaCombine()
+                            } label: {
+                                HStack {
+                                    if isFetchingAPI {
+                                        ProgressView()
+                                            .tint(.white)
+                                    } else {
+                                        Image(systemName: "network")
+                                    }
+                                    Text(isFetchingAPI ? "Загрузка регламента по REST API..." : "Запросить регламент ухода (REST API + Combine)")
+                                }
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(Color.white)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.purple)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                            }
+                            .disabled(isFetchingAPI)
+                            
+                            if !apiSuccessMessage.isEmpty {
+                                HStack {
+                                    Image(systemName: "checkmark.seal.fill")
+                                        .foregroundStyle(Color.green)
+                                    Text(apiSuccessMessage)
+                                        .font(.caption)
+                                        .foregroundStyle(Color.secondary)
+                                }
+                                .padding(8)
+                                .background(Color.green.opacity(0.1))
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                            }
+                            
+                            // Сохранение в БД и генерация Push-напоминаний
+                            Button {
+                                let finalBotanical = fetchedBotanicalInfo ?? selectedTag.botanicalInfo
+                                viewModel.addNewPlantFromScan(selectedTag: selectedTag, customBotanical: finalBotanical)
                                 dismiss()
                             } label: {
-                                Text("Сохранить в базу данных")
-                                    .font(.headline)
-                                    .foregroundStyle(Color.white)
-                                    .frame(maxWidth: .infinity)
-                                    .padding()
-                                    .background(Color.blue)
-                                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                                HStack {
+                                    Image(systemName: "bell.badge.fill")
+                                    Text("Сохранить в БД и включить Push-напоминания")
+                                }
+                                .font(.headline)
+                                .foregroundStyle(Color.white)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.blue)
+                                .clipShape(RoundedRectangle(cornerRadius: 14))
                             }
                         }
                         .padding(.horizontal)
@@ -144,7 +169,7 @@ public struct CameraScanSheetView: View {
                 }
                 .padding(.vertical)
             }
-            .navigationTitle("Сканер растений")
+            .navigationTitle("Сканер и REST API")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -152,5 +177,21 @@ public struct CameraScanSheetView: View {
                 }
             }
         }
+    }
+    
+    // Выполнение реактивного сетевого запроса Combine
+    private func fetchCareRegulationViaCombine() {
+        isFetchingAPI = true
+        PlantAPIService.shared.fetchPlantCareRegulation(query: recognizedName)
+            .sink { completion in
+                isFetchingAPI = false
+                if case .failure(let error) = completion {
+                    apiSuccessMessage = "Ошибка сети: \(error.localizedDescription)"
+                }
+            } receiveValue: { botanicalInfo in
+                self.fetchedBotanicalInfo = botanicalInfo
+                self.apiSuccessMessage = "✓ Регламент получен по REST API perenual.com (Статус: 200 OK)"
+            }
+            .store(in: &cancellables)
     }
 }
